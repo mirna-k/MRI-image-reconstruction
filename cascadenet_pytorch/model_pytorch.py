@@ -240,7 +240,8 @@ class CRNNcell(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, input, hidden_iteration, hidden):
-        in_to_hid = self.i2h(input)
+        #print(input.dtype)
+        in_to_hid = self.i2h(input.real)
         hid_to_hid = self.h2h(hidden)
         ih_to_ih = self.ih2ih(hidden_iteration)
 
@@ -248,6 +249,39 @@ class CRNNcell(nn.Module):
 
         return hidden
 
+# ************************COMPLEX***************************************************************
+class ComplexCRNNcell(nn.Module):
+
+    def __init__(self, input_size, hidden_size, kernel_size):
+        super(ComplexCRNNcell, self).__init__()
+        self.kernel_size = kernel_size
+        self.i2h_real = nn.Conv2d(input_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.i2h_imag = nn.Conv2d(input_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.h2h_real = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.h2h_imag = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.ih2ih_real = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.ih2ih_imag = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, input, hidden_iteration, hidden):
+        print(input.dtype)
+        in_to_hid_real = self.i2h_real(input.real) - self.i2h_imag(input.imag)
+        in_to_hid_imag = self.i2h_real(input.imag) + self.i2h_imag(input.real)
+        
+        hid_to_hid_real = self.h2h_real(hidden) - self.h2h_imag(hidden)
+        hid_to_hid_imag = self.h2h_real(hidden.imag) + self.h2h_imag(hidden.real)
+        
+        ih_to_ih_real = self.ih2ih_real(hidden_iteration) - self.ih2ih_imag(hidden_iteration)
+        ih_to_ih_imag = self.ih2ih_real(hidden_iteration.imag) + self.ih2ih_imag(hidden_iteration.real)
+
+        hidden_real = in_to_hid_real + hid_to_hid_real + ih_to_ih_real
+        hidden_imag = in_to_hid_imag + hid_to_hid_imag + ih_to_ih_imag
+
+        hidden = torch.complex(hidden_real, hidden_imag)
+        hidden = self.relu(hidden)
+
+        return hidden
+# ************************COMPLEX***************************************************************
 
 class BCRNNlayer(nn.Module):
     """
@@ -276,15 +310,17 @@ class BCRNNlayer(nn.Module):
         size_h = [nb, self.hidden_size, nx, ny]
         if test:
             with torch.no_grad():
-                hid_init = Variable(torch.zeros(size_h)).cuda()
+                hid_init = torch.zeros(size_h, device='cuda')
         else:
-            hid_init = Variable(torch.zeros(size_h)).cuda()
+            hid_init = torch.zeros(size_h, device='cuda')
 
         output_f = []
         output_b = []
         # forward
         hidden = hid_init
         for i in range(nt):
+            print(input[i])
+            
             hidden = self.CRNN_model(input[i], input_iteration[i], hidden)
             output_f.append(hidden)
 
@@ -359,9 +395,9 @@ class CRNN_MRI(nn.Module):
         size_h = [n_seq*n_batch, self.nf, width, height]
         if test:
             with torch.no_grad():
-                hid_init = Variable(torch.zeros(size_h)).cuda()
+                hid_init = torch.zeros(size_h, device='cuda')
         else:
-            hid_init = Variable(torch.zeros(size_h)).cuda()
+            hid_init = torch.zeros(size_h, device='cuda')
 
         for j in range(self.nd-1):
             net['t0_x%d'%j]=hid_init
@@ -407,5 +443,4 @@ class CRNN_MRI(nn.Module):
                 torch.cuda.empty_cache()
 
         return net['t%d_out'%i]
-
 

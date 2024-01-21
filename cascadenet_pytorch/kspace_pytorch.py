@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.fft
 
 
 def data_consistency(k, k0, mask, noise_lvl=None):
@@ -28,7 +29,7 @@ class DataConsistencyInKspace(nn.Module):
 
     def __init__(self, noise_lvl=None, norm='ortho'):
         super(DataConsistencyInKspace, self).__init__()
-        self.normalized = norm == 'ortho'
+        self.normalized = norm
         self.noise_lvl = noise_lvl
 
     def forward(self, *input, **kwargs):
@@ -50,9 +51,9 @@ class DataConsistencyInKspace(nn.Module):
             k0   = k0.permute(0, 4, 2, 3, 1)
             mask = mask.permute(0, 4, 2, 3, 1)
 
-        k = torch.fft(x, 2, normalized=self.normalized)
+        k = torch.fft.fft(x, 2, norm=self.normalized)
         out = data_consistency(k, k0, mask, self.noise_lvl)
-        x_res = torch.ifft(out, 2, normalized=self.normalized)
+        x_res = torch.fft.ifft(out, 2, norm=self.normalized)
 
         if x.dim() == 4:
             x_res = x_res.permute(0, 3, 1, 2)

@@ -28,12 +28,12 @@ def prep_input(im, acc=4.0):
     gauss_ivar: float - controls the undersampling rate.
                         higher the value, more undersampling
     """
-    mask = cs.cartesian_mask(im.shape, acc, sample_n=8)
-    im_und, k_und = cs.undersample(im, mask, centred=False, norm='ortho')
-    im_gnd_l = torch.from_numpy(to_tensor_format(im))
-    im_und_l = torch.from_numpy(to_tensor_format(im_und))
-    k_und_l = torch.from_numpy(to_tensor_format(k_und))
-    mask_l = torch.from_numpy(to_tensor_format(mask, mask=True))
+    mask = cs.cartesian_mask(im.shape, acc, sample_n=8) #float64
+    im_und, k_und = cs.undersample(im, mask, centred=False, norm='ortho') # complex128, complex128
+    im_gnd_l = torch.from_numpy(to_tensor_format(im)) # float32
+    im_und_l = torch.from_numpy(to_tensor_format(im_und)) # float64
+    k_und_l = torch.from_numpy(to_tensor_format(k_und)) # float64
+    mask_l = torch.from_numpy(to_tensor_format(mask, mask=True)) # float64
 
     return im_und_l, k_und_l, mask_l, im_gnd_l
 
@@ -131,7 +131,7 @@ if __name__ == '__main__':
         # Training
         train_err = 0
         train_batches = 0
-        for im in iterate_minibatch(train, batch_size, shuffle=True):
+        for im in iterate_minibatch(train, batch_size, shuffle=True): #im -> complex
             im_und, k_und, mask, im_gnd = prep_input(im, acc)
             im_u = Variable(im_und.type(Tensor))
             k_u = Variable(k_und.type(Tensor))
@@ -140,7 +140,7 @@ if __name__ == '__main__':
 
             optimizer.zero_grad()
             rec = rec_net(im_u, k_u, mask, test=False)
-            loss = criterion(rec, gnd)
+            loss = criterion(torch.abs(rec), gnd)
             loss.backward()
             optimizer.step()
 
@@ -162,7 +162,7 @@ if __name__ == '__main__':
                 gnd = Variable(im_gnd.type(Tensor))
 
             pred = rec_net(im_u, k_u, mask, test=True)
-            err = criterion(pred, gnd)
+            err = criterion(torch.abs(pred), gnd)
 
             validate_err += err
             validate_batches += 1
@@ -184,7 +184,7 @@ if __name__ == '__main__':
                 gnd = Variable(im_gnd.type(Tensor))
 
             pred = rec_net(im_u, k_u, mask, test=True)
-            err = criterion(pred, gnd)
+            err = criterion(torch.abs(pred), gnd)
             test_err += err
             for im_i, und_i, pred_i in zip(im,
                                            from_tensor_format(im_und.numpy()),
