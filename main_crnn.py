@@ -19,6 +19,9 @@ from cascadenet_pytorch.model_pytorch import *
 from cascadenet_pytorch.dnn_io import to_tensor_format
 from cascadenet_pytorch.dnn_io import from_tensor_format
 
+from my_helper import read_files_in_folder
+import h5py
+
 
 def prep_input(im, acc=4.0):
     """Undersample the batch, then reformat them into what the network accepts.
@@ -70,6 +73,17 @@ def create_dummy_data():
     return train, validate, test
 
 
+def get_kspace_from_h5(file_path: str) -> list:
+    data_paths = read_files_in_folder(file_path)
+    
+    kspace_data = []
+    for data_file in data_paths:
+        read_file = h5py.File(data_file, 'r+')
+        kspace_data.append(np.array(read_file['kspace']))
+
+    return kspace_data
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_epoch', metavar='int', nargs=1, default=['10'],
@@ -106,7 +120,8 @@ if __name__ == '__main__':
         os.makedirs(save_dir)
 
     # Create dataset
-    train, validate, test = create_dummy_data()
+    #train, validate, test = create_dummy_data()
+    train = get_kspace_from_h5('brain_data')
 
     # Test creating mask and compute the acceleration rate
     dummy_mask = cs.cartesian_mask((10, Nx, Ny//Ny_red), acc, sample_n=8)
@@ -139,6 +154,7 @@ if __name__ == '__main__':
             gnd = Variable(im_gnd.type(Tensor))
 
             optimizer.zero_grad()
+            print(f'1. im_u: {im_u.dtype}')
             rec = rec_net(im_u, k_u, mask, test=False)
             loss = criterion(torch.abs(rec), gnd)
             loss.backward()
