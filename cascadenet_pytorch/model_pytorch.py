@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.autograd import Variable, grad
 import numpy as np
 import cascadenet_pytorch.kspace_pytorch as cl
+import torch.nn.functional as F
 
 
 def lrelu():
@@ -241,11 +242,6 @@ class CRNNcell(nn.Module):
 
     def forward(self, input, hidden_iteration, hidden):
         print(f'4. input-cell: {input.dtype}')
-        if hidden_iteration.dtype == torch.complex64 or hidden.dtype == torch.complex64:
-          print(f'input: {input.dtype}')
-          print(f'hidden_it: {hidden_iteration.dtype}')
-          print(f'hidden: {hidden.dtype}')
-          print()
 
         in_to_hid = self.i2h(input.real)
         hid_to_hid = self.h2h(hidden)
@@ -266,45 +262,26 @@ class ComplexCRNNcell(nn.Module):
         self.h2h_real = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
         self.h2h_imag = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
         # add iteration hidden connection
-        self.ih2ih = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.ih2ih_real = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
+        self.ih2ih_imag = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=self.kernel_size // 2)
         self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, input, hidden_iteration, hidden):
-        if hidden_iteration.dtype == torch.complex64 or hidden.dtype == torch.complex64:
-          print(f'input: {input.dtype}')
-          print(f'hidden_it: {hidden_iteration.dtype}')
-          print(f'hidden: {hidden.dtype}')
-          print()
+    def forward(self, input, hidden_iteration, hidden):      
+        input = input.to(torch.complex64)
+        hidden_iteration = hidden_iteration.to(torch.complex64)
+        hidden = hidden.to(torch.complex64)
 
-        if input.dtype == torch.complex64 and hidden.dtype == torch.float32:  # Complex input
-            in_to_hid_real = self.i2h_real(input.real) - self.i2h_imag(input.imag)
-            in_to_hid_imag = self.i2h_real(input.imag) + self.i2h_imag(input.real)
+        in_to_hid_real = self.i2h_real(input.real) - self.i2h_imag(input.imag)
+        in_to_hid_imag = self.i2h_real(input.imag) + self.i2h_imag(input.real)
 
-            hid_to_hid = self.h2h_real(hidden)
-            ih_to_ih = self.ih2ih(hidden_iteration)
+        hid_to_hid_real = self.h2h_real(hidden.real) - self.h2h_imag(hidden.imag)
+        hid_to_hid_imag = self.h2h_real(hidden.imag) + self.h2h_imag(hidden.real)
 
-            hidden = torch.complex(in_to_hid_real + hid_to_hid + ih_to_ih, in_to_hid_imag)
-            hidden = torch.complex(self.relu(hidden.real), self.relu(hidden.imag))
-        elif hidden.dtype == torch.complex64:
-            in_to_hid_real = self.i2h_real(input.real) - self.i2h_imag(input.imag)
-            in_to_hid_imag = self.i2h_real(input.imag) + self.i2h_imag(input.real)
+        ih_to_ih_real = self.ih2ih_real(hidden_iteration.real) - self.ih2ih_imag(hidden_iteration.imag)
+        ih_to_ih_imag = self.ih2ih_real(hidden_iteration.imag) + self.ih2ih_imag(hidden_iteration.real)
 
-            hid_to_hid_real = self.h2h_real(hidden.real) - self.h2h_imag(hidden.imag)
-            hid_to_hid_imag = self.h2h_real(hidden.imag) + self.h2h_imag(hidden.real)
-
-            ih_to_ih = self.ih2ih(hidden_iteration)
-
-            hidden = torch.complex(in_to_hid_real + hid_to_hid_real + ih_to_ih, hid_to_hid_imag + in_to_hid_imag)
-            hidden = torch.complex(self.relu(hidden.real), self.relu(hidden.imag))
-        elif input.dtype == torch.float32:  # Real input
-            in_to_hid_real = self.i2h_real(input)
-            hid_to_hid_real = self.h2h_real(hidden)
-            ih_to_ih_real = self.ih2ih(hidden_iteration)
-
-            hidden_real = in_to_hid_real + hid_to_hid_real + ih_to_ih_real
-            hidden = self.relu(hidden_real)
-        else:
-            raise ValueError(f"Unsupported input data type: {input.dtype}")
+        hidden = torch.complex(in_to_hid_real + hid_to_hid_real + ih_to_ih_real, hid_to_hid_imag + in_to_hid_imag + ih_to_ih_imag)
+        hidden = torch.complex(self.relu(hidden.real), self.relu(hidden.imag))
 
         return hidden
 # ************************COMPLEX***************************************************************
@@ -329,7 +306,7 @@ class BCRNNlayer(nn.Module):
         self.hidden_size = hidden_size
         self.kernel_size = kernel_size
         self.input_size = input_size
-        self.CRNN_model = CRNNcell(self.input_size, self.hidden_size, self.kernel_size)
+        self.CRNN_model = ComplexCRNNcell(self.input_size, self.hidden_size, self.kernel_size)
 
     def forward(self, input, input_iteration, test=False):
         print(f'3. input-layer: {input.dtype}')
@@ -365,7 +342,28 @@ class BCRNNlayer(nn.Module):
             output = output.view(nt, 1, self.hidden_size, nx, ny)
 
         return output
+    
 
+class ComplexConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, padding):
+        super(ComplexConv2d, self).__init__()
+        self.real_conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
+        self.imag_conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding)
+
+    def forward(self, input):
+        if input.dtype == torch.float32:
+          input = input.to(torch.complex64)
+        real_part = self.real_conv(input.real) - self.imag_conv(input.imag)
+        imag_part = self.real_conv(input.imag) + self.imag_conv(input.real)
+        return torch.complex(real_part, imag_part)
+
+class ComplexReLU(nn.Module):
+    def __init__(self, inplace=False):
+        super(ComplexReLU, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, input):
+        return torch.complex(F.relu(torch.abs(input)), torch.zeros_like(input.imag))
 
 class CRNN_MRI(nn.Module):
     """
@@ -394,14 +392,14 @@ class CRNN_MRI(nn.Module):
         self.ks = ks
 
         self.bcrnn = BCRNNlayer(n_ch, nf, ks)
-        self.conv1_x = nn.Conv2d(nf, nf, ks, padding = ks//2)
-        self.conv1_h = nn.Conv2d(nf, nf, ks, padding = ks//2)
-        self.conv2_x = nn.Conv2d(nf, nf, ks, padding = ks//2)
-        self.conv2_h = nn.Conv2d(nf, nf, ks, padding = ks//2)
-        self.conv3_x = nn.Conv2d(nf, nf, ks, padding = ks//2)
-        self.conv3_h = nn.Conv2d(nf, nf, ks, padding = ks//2)
-        self.conv4_x = nn.Conv2d(nf, n_ch, ks, padding = ks//2)
-        self.relu = nn.ReLU(inplace=True)
+        self.conv1_x = ComplexConv2d(nf, nf, ks, padding = ks//2)
+        self.conv1_h = ComplexConv2d(nf, nf, ks, padding = ks//2)
+        self.conv2_x = ComplexConv2d(nf, nf, ks, padding = ks//2)
+        self.conv2_h = ComplexConv2d(nf, nf, ks, padding = ks//2)
+        self.conv3_x = ComplexConv2d(nf, nf, ks, padding = ks//2)
+        self.conv3_h = ComplexConv2d(nf, nf, ks, padding = ks//2)
+        self.conv4_x = ComplexConv2d(nf, n_ch, ks, padding = ks//2)
+        self.relu = ComplexReLU(inplace=True)
 
         dcs = []
         for i in range(nc):
