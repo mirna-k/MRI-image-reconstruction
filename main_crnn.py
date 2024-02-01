@@ -8,6 +8,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 import argparse
 import matplotlib.pyplot as plt
+import numpy as np
 
 from os.path import join
 from scipy.io import loadmat
@@ -73,15 +74,29 @@ def create_dummy_data():
     return train, validate, test
 
 
-def get_kspace_from_h5(file_path: str) -> list:
-    data_paths = read_files_in_folder(file_path)
-    
-    kspace_data = []
-    for data_file in data_paths:
-        read_file = h5py.File(data_file, 'r+')
-        kspace_data.append(np.array(read_file['kspace']))
+def get_data_from_h5(folder_path: str):
+    train = []
+    validate = []
+    test = []
 
-    return kspace_data
+    train_files = read_files_in_folder(folder_path + '/train')
+    val_files = read_files_in_folder(folder_path + '/validation')
+    test_files = read_files_in_folder(folder_path + '/test')
+
+    for file in train_files:
+        h5_file = h5py.File(file, 'r+')
+        train.append(np.array(h5_file['kspace']))
+        print(np.array(h5_file['kspace']).shape)
+
+    for file in val_files:
+        h5_file = h5py.File(file, 'r+')
+        validate.append(np.array(h5_file['kspace']))
+
+    for file in test_files:
+        h5_file = h5py.File(file, 'r+')
+        test.append(np.array(h5_file['kspace']))
+
+    return train[0], validate[0], test[0]
 
 
 if __name__ == '__main__':
@@ -120,8 +135,8 @@ if __name__ == '__main__':
         os.makedirs(save_dir)
 
     # Create dataset
-    #train, validate, test = create_dummy_data()
-    train = get_kspace_from_h5('brain_data')
+    train_dummy, validate_dummy, test_dummy = create_dummy_data()
+    train, validate, test = get_data_from_h5('../MRI_data/MyDrive/MRI_dataset')
 
     # Test creating mask and compute the acceleration rate
     dummy_mask = cs.cartesian_mask((10, Nx, Ny//Ny_red), acc, sample_n=8)
