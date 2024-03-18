@@ -12,6 +12,7 @@ import numpy as np
 
 from os.path import join
 from scipy.io import loadmat
+from get_image import get_image
 
 from utils import compressed_sensing as cs
 from utils.metric import complex_psnr
@@ -65,13 +66,39 @@ def create_dummy_data():
     ny_red = 8
     sl = ny//ny_red
     data_t = np.transpose(data, (2, 0, 1))
-    
+
     # Synthesize data by extracting patches
     train = np.array([data_t[..., i:i+sl] for i in np.random.randint(0, sl*3, 20)])
+    print(train.shape)
     validate = np.array([data_t[..., i:i+sl] for i in (sl*4, sl*5)])
     test = np.array([data_t[..., i:i+sl] for i in (sl*6, sl*7)])
 
     return train, validate, test
+
+
+# def get_data_from_h5(folder_path: str):
+#     train = []
+#     validate = []
+#     test = []
+
+#     train_files = read_files_in_folder(folder_path + '/train')
+#     val_files = read_files_in_folder(folder_path + '/validation')
+#     test_files = read_files_in_folder(folder_path + '/test')
+
+#     for file in train_files:
+#         h5_file = h5py.File(file, 'r+')
+#         train.append(np.array(h5_file['kspace']))
+#         print(np.array(h5_file['kspace']).shape)
+
+#     for file in val_files:
+#         h5_file = h5py.File(file, 'r+')
+#         validate.append(np.array(h5_file['kspace']))
+
+#     for file in test_files:
+#         h5_file = h5py.File(file, 'r+')
+#         test.append(np.array(h5_file['kspace']))
+
+#     return train[0], validate[0], test[0]
 
 
 def get_data_from_h5(folder_path: str):
@@ -85,18 +112,21 @@ def get_data_from_h5(folder_path: str):
 
     for file in train_files:
         h5_file = h5py.File(file, 'r+')
-        train.append(np.array(h5_file['kspace']))
+        images = get_image(h5_file)
+        train.append(images)
         print(np.array(h5_file['kspace']).shape)
 
     for file in val_files:
         h5_file = h5py.File(file, 'r+')
-        validate.append(np.array(h5_file['kspace']))
+        images = get_image(h5_file)
+        validate.append(images)
 
     for file in test_files:
         h5_file = h5py.File(file, 'r+')
-        test.append(np.array(h5_file['kspace']))
+        images = get_image(h5_file)
+        test.append(images)
 
-    return train[0], validate[0], test[0]
+    return train, validate, test
 
 
 if __name__ == '__main__':
@@ -123,7 +153,8 @@ if __name__ == '__main__':
     acc = float(args.acceleration_factor[0])  # undersampling rate
     num_epoch = int(args.num_epoch[0])
     batch_size = int(args.batch_size[0])
-    Nx, Ny, Nt = 256, 256, 30
+    #Nx, Ny, Nt = 256, 256, 30
+    Nx, Ny, Nt = 640, 320, 16
     Ny_red = 8
     save_fig = args.savefig
     save_every = 5
@@ -135,8 +166,9 @@ if __name__ == '__main__':
         os.makedirs(save_dir)
 
     # Create dataset
-    train_dummy, validate_dummy, test_dummy = create_dummy_data()
-    train, validate, test = get_data_from_h5('../MRI_data/MyDrive/MRI_dataset')
+    train, validate, test = create_dummy_data()
+    # '../MRI_data/MyDrive/MRI_dataset'
+    # train, validate, test = get_data_from_h5('brain_data')
 
     # Test creating mask and compute the acceleration rate
     dummy_mask = cs.cartesian_mask((10, Nx, Ny//Ny_red), acc, sample_n=8)
@@ -163,6 +195,7 @@ if __name__ == '__main__':
         train_batches = 0
         for im in iterate_minibatch(train, batch_size, shuffle=True): #im -> complex
             im_und, k_und, mask, im_gnd = prep_input(im, acc)
+            # im_und = torch.Size([1, 2, 256, 32, 30])
             im_u = Variable(im_und.type(Tensor))
             k_u = Variable(k_und.type(Tensor))
             mask = Variable(mask.type(Tensor))
