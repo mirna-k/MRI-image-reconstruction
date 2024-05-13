@@ -241,7 +241,7 @@ class CRNNcell(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, input, hidden_iteration, hidden):
-        print(f'4. input-cell: {input.dtype}')
+        # print(f'4. input-cell: {input.dtype}')
 
         in_to_hid = self.i2h(input.real)
         hid_to_hid = self.h2h(hidden)
@@ -306,10 +306,10 @@ class BCRNNlayer(nn.Module):
         self.hidden_size = hidden_size
         self.kernel_size = kernel_size
         self.input_size = input_size
-        self.CRNN_model = ComplexCRNNcell(self.input_size, self.hidden_size, self.kernel_size)
+        self.CRNN_model = CRNNcell(self.input_size, self.hidden_size, self.kernel_size)
 
     def forward(self, input, input_iteration, test=False):
-        print(f'3. input-layer: {input.dtype}')
+        # print(f'3. input-layer: {input.dtype}')
         nt, nb, nc, nx, ny = input.shape
         size_h = [nb, self.hidden_size, nx, ny]
         if test:
@@ -392,14 +392,14 @@ class CRNN_MRI(nn.Module):
         self.ks = ks
 
         self.bcrnn = BCRNNlayer(n_ch, nf, ks)
-        self.conv1_x = ComplexConv2d(nf, nf, ks, padding = ks//2)
-        self.conv1_h = ComplexConv2d(nf, nf, ks, padding = ks//2)
-        self.conv2_x = ComplexConv2d(nf, nf, ks, padding = ks//2)
-        self.conv2_h = ComplexConv2d(nf, nf, ks, padding = ks//2)
-        self.conv3_x = ComplexConv2d(nf, nf, ks, padding = ks//2)
-        self.conv3_h = ComplexConv2d(nf, nf, ks, padding = ks//2)
-        self.conv4_x = ComplexConv2d(nf, n_ch, ks, padding = ks//2)
-        self.relu = ComplexReLU(inplace=True)
+        self.conv1_x = nn.Conv2d(nf, nf, ks, padding = ks//2)
+        self.conv1_h = nn.Conv2d(nf, nf, ks, padding = ks//2)
+        self.conv2_x = nn.Conv2d(nf, nf, ks, padding = ks//2)
+        self.conv2_h = nn.Conv2d(nf, nf, ks, padding = ks//2)
+        self.conv3_x = nn.Conv2d(nf, nf, ks, padding = ks//2)
+        self.conv3_h = nn.Conv2d(nf, nf, ks, padding = ks//2)
+        self.conv4_x = nn.Conv2d(nf, n_ch, ks, padding = ks//2)
+        self.relu = nn.ReLU(inplace=True)
 
         dcs = []
         for i in range(nc):
@@ -413,7 +413,7 @@ class CRNN_MRI(nn.Module):
         m   - corresponding nonzero location
         test - True: the model is in test mode, False: train mode
         """
-        print(f'2. x: {x.dtype}')
+        # print(f'2. x: {x.dtype}')
         net = {}
         n_batch, n_ch, width, height, n_seq = x.size()
         size_h = [n_seq*n_batch, self.nf, width, height]
@@ -430,41 +430,42 @@ class CRNN_MRI(nn.Module):
 
             x = x.permute(4,0,1,2,3)
             x = x.contiguous()
-            net['t%d_x0' % (i - 1)] = net['t%d_x0' % (i - 1)].view(n_seq, n_batch,self.nf,width, height)
-            net['t%d_x0'%i] = self.bcrnn(x, net['t%d_x0'%(i-1)], test)
-            net['t%d_x0'%i] = net['t%d_x0'%i].view(-1,self.nf,width, height)
+            net[f't{i-1}_x0'] = net[f't{i-1}_x0'].view(n_seq, n_batch, self.nf, width, height)
+            net[f't{i}_x0'] = self.bcrnn(x, net[f't{i-1}_x0'], test)
+            net[f't{i}_x0'] = net[f't{i}_x0'].view(-1, self.nf, width, height)
 
-            net['t%d_x1'%i] = self.conv1_x(net['t%d_x0'%i])
-            net['t%d_h1'%i] = self.conv1_h(net['t%d_x1'%(i-1)])
-            net['t%d_x1'%i] = self.relu(net['t%d_h1'%i]+net['t%d_x1'%i])
+            net[f't{i}_x1'] = self.conv1_x(net[f't{i}_x0'])
+            net[f't{i}_h1'] = self.conv1_h(net[f't{i-1}_x1'])
+            net[f't{i}_x1'] = self.relu(net[f't{i}_h1'] + net[f't{i}_x1'])
 
-            net['t%d_x2'%i] = self.conv2_x(net['t%d_x1'%i])
-            net['t%d_h2'%i] = self.conv2_h(net['t%d_x2'%(i-1)])
-            net['t%d_x2'%i] = self.relu(net['t%d_h2'%i]+net['t%d_x2'%i])
+            net[f't{i}_x2'] = self.conv2_x(net[f't{i}_x1'])
+            net[f't{i}_h2'] = self.conv2_h(net[f't{i-1}_x2'])
+            net[f't{i}_x2'] = self.relu(net[f't{i}_h2'] + net[f't{i}_x2'])
 
-            net['t%d_x3'%i] = self.conv3_x(net['t%d_x2'%i])
-            net['t%d_h3'%i] = self.conv3_h(net['t%d_x3'%(i-1)])
-            net['t%d_x3'%i] = self.relu(net['t%d_h3'%i]+net['t%d_x3'%i])
+            net[f't{i}_x3'] = self.conv3_x(net[f't{i}_x2'])
+            net[f't{i}_h3'] = self.conv3_h(net[f't{i-1}_x3'])
+            net[f't{i}_x3'] = self.relu(net[f't{i}_h3'] + net[f't{i}_x3'])
 
-            net['t%d_x4'%i] = self.conv4_x(net['t%d_x3'%i])
+            net[f't{i}_x4'] = self.conv4_x(net[f't{i}_x3'])
 
-            x = x.view(-1,n_ch,width, height)
-            net['t%d_out'%i] = x + net['t%d_x4'%i]
+            x = x.view(-1, n_ch, width, height)
+            net[f't{i}_out'] = x + net[f't{i}_x4']
 
-            net['t%d_out'%i] = net['t%d_out'%i].view(-1,n_batch, n_ch, width, height)
-            net['t%d_out'%i] = net['t%d_out'%i].permute(1,2,3,4,0)
-            net['t%d_out'%i].contiguous()
-            net['t%d_out'%i] = self.dcs[i-1].perform(net['t%d_out'%i], k, m)
-            x = net['t%d_out'%i]
+            net[f't{i}_out'] = net[f't{i}_out'].view(-1, n_batch, n_ch, width, height)
+            net[f't{i}_out'] = net[f't{i}_out'].permute(1, 2, 3, 4, 0)
+            net[f't{i}_out'].contiguous()
+            net[f't{i}_out'] = self.dcs[i-1].perform(net[f't{i}_out'], k, m)
+            x = net[f't{i}_out']
+
 
             # clean up i-1
             if test:
-                to_delete = [ key for key in net if ('t%d'%(i-1)) in key ]
+                to_delete = [ key for key in net if (f't{i-1}') in key ]
 
                 for elt in to_delete:
                     del net[elt]
 
                 torch.cuda.empty_cache()
 
-        return net['t%d_out'%i]
+        return net[f't{i}_out']
 

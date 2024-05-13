@@ -12,9 +12,8 @@ import numpy as np
 
 from os.path import join
 from scipy.io import loadmat
-from get_image import get_image
 
-from utils import compressed_sensing as cs
+from utils import compressed_sensing as cs, mymath
 from utils.metric import complex_psnr
 
 from cascadenet_pytorch.model_pytorch import *
@@ -35,7 +34,9 @@ def prep_input(im, acc=4.0):
     """
     mask = cs.cartesian_mask(im.shape, acc, sample_n=8) #float64
     im_und, k_und = cs.undersample(im, mask, centred=False, norm='ortho') # complex128, complex128
-    im_gnd_l = torch.from_numpy(to_tensor_format(im)) # float32
+    x_f = mymath.fft2c(im)
+    x_if = mymath.ifft2c(x_f)
+    im_gnd_l = torch.from_numpy(to_tensor_format(x_if)) # float32
     im_und_l = torch.from_numpy(to_tensor_format(im_und)) # float64
     k_und_l = torch.from_numpy(to_tensor_format(k_und)) # float64
     mask_l = torch.from_numpy(to_tensor_format(mask, mask=True)) # float64
@@ -61,70 +62,17 @@ def create_dummy_data():
     overfitting.
 
     """
-    data = loadmat(join(project_root, './data/cardiac.mat'))['seq']
+    # data = loadmat(join(project_root, './data/cardiac.mat'))['seq']
+    data =  h5py.File('brain_data/train/file_brain_AXFLAIR_200_6002425.h5')['reconstruction_rss'][:14, :, :]
     nx, ny, nt = data.shape
     ny_red = 8
     sl = ny//ny_red
-    data_t = np.transpose(data, (2, 0, 1))
+    # data_t = np.transpose(data, (2, 0, 1))
 
     # Synthesize data by extracting patches
-    train = np.array([data_t[..., i:i+sl] for i in np.random.randint(0, sl*3, 20)])
-    print(train.shape)
-    validate = np.array([data_t[..., i:i+sl] for i in (sl*4, sl*5)])
-    test = np.array([data_t[..., i:i+sl] for i in (sl*6, sl*7)])
-
-    return train, validate, test
-
-
-# def get_data_from_h5(folder_path: str):
-#     train = []
-#     validate = []
-#     test = []
-
-#     train_files = read_files_in_folder(folder_path + '/train')
-#     val_files = read_files_in_folder(folder_path + '/validation')
-#     test_files = read_files_in_folder(folder_path + '/test')
-
-#     for file in train_files:
-#         h5_file = h5py.File(file, 'r+')
-#         train.append(np.array(h5_file['kspace']))
-#         print(np.array(h5_file['kspace']).shape)
-
-#     for file in val_files:
-#         h5_file = h5py.File(file, 'r+')
-#         validate.append(np.array(h5_file['kspace']))
-
-#     for file in test_files:
-#         h5_file = h5py.File(file, 'r+')
-#         test.append(np.array(h5_file['kspace']))
-
-#     return train[0], validate[0], test[0]
-
-
-def get_data_from_h5(folder_path: str):
-    train = []
-    validate = []
-    test = []
-
-    train_files = read_files_in_folder(folder_path + '/train')
-    val_files = read_files_in_folder(folder_path + '/validation')
-    test_files = read_files_in_folder(folder_path + '/test')
-
-    for file in train_files:
-        h5_file = h5py.File(file, 'r+')
-        images = get_image(h5_file)
-        train.append(images)
-        print(np.array(h5_file['kspace']).shape)
-
-    for file in val_files:
-        h5_file = h5py.File(file, 'r+')
-        images = get_image(h5_file)
-        validate.append(images)
-
-    for file in test_files:
-        h5_file = h5py.File(file, 'r+')
-        images = get_image(h5_file)
-        test.append(images)
+    train = np.array([data[..., i:i+sl] for i in np.random.randint(0, sl*3, 20)])
+    validate = np.array([data[..., i:i+sl] for i in (sl*4, sl*5)])
+    test = np.array([data[..., i:i+sl] for i in (sl*6, sl*7)])
 
     return train, validate, test
 
@@ -154,7 +102,7 @@ if __name__ == '__main__':
     num_epoch = int(args.num_epoch[0])
     batch_size = int(args.batch_size[0])
     #Nx, Ny, Nt = 256, 256, 30
-    Nx, Ny, Nt = 640, 320, 16
+    Nx, Ny, Nt = 320, 320, 14
     Ny_red = 8
     save_fig = args.savefig
     save_every = 5
@@ -168,7 +116,7 @@ if __name__ == '__main__':
     # Create dataset
     train, validate, test = create_dummy_data()
     # '../MRI_data/MyDrive/MRI_dataset'
-    # train, validate, test = get_data_from_h5('brain_data')
+    # train, validate, test = get_brain_data('brain_data')
 
     # Test creating mask and compute the acceleration rate
     dummy_mask = cs.cartesian_mask((10, Nx, Ny//Ny_red), acc, sample_n=8)
@@ -202,7 +150,7 @@ if __name__ == '__main__':
             gnd = Variable(im_gnd.type(Tensor))
 
             optimizer.zero_grad()
-            print(f'1. im_u: {im_u.dtype}')
+            # print(f'1. im_u: {im_u.dtype}')
             rec = rec_net(im_u, k_u, mask, test=False)
             loss = criterion(torch.abs(rec), gnd)
             loss.backward()
