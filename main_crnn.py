@@ -20,7 +20,7 @@ from cascadenet_pytorch.model_pytorch import *
 from cascadenet_pytorch.dnn_io import to_tensor_format
 from cascadenet_pytorch.dnn_io import from_tensor_format
 
-from my_helper import read_files_in_folder
+from my_helper import get_file_paths, read_brain_files
 import h5py
 
 
@@ -63,6 +63,7 @@ def create_dummy_data():
 
     """
     # data = loadmat(join(project_root, './data/cardiac.mat'))['seq']
+    # '../MRI_data/MyDrive/MRI_dataset/train/file_brain_AXFLAIR_200_6002425.h5'
     data =  h5py.File('brain_data/train/file_brain_AXFLAIR_200_6002425.h5')['reconstruction_rss'][:14, :, :]
     nx, ny, nt = data.shape
     ny_red = 8
@@ -73,6 +74,18 @@ def create_dummy_data():
     train = np.array([data[..., i:i+sl] for i in np.random.randint(0, sl*3, 20)])
     validate = np.array([data[..., i:i+sl] for i in (sl*4, sl*5)])
     test = np.array([data[..., i:i+sl] for i in (sl*6, sl*7)])
+
+    return train, validate, test
+
+
+def get_brain_data(folder_path: str):
+    train_file_paths = get_file_paths(folder_path + '/train')
+    val_file_paths = get_file_paths(folder_path + '/validation')
+    test_file_paths = get_file_paths(folder_path + '/test')
+
+    train = read_brain_files(train_file_paths)
+    validate = read_brain_files(val_file_paths)
+    test = read_brain_files(test_file_paths)
 
     return train, validate, test
 
@@ -114,9 +127,8 @@ if __name__ == '__main__':
         os.makedirs(save_dir)
 
     # Create dataset
-    train, validate, test = create_dummy_data()
-    # '../MRI_data/MyDrive/MRI_dataset'
-    # train, validate, test = get_brain_data('brain_data')
+    # train, validate, test = create_dummy_data()
+    train, validate, test = get_brain_data('../MRI_data/MyDrive/MRI_dataset')
 
     # Test creating mask and compute the acceleration rate
     dummy_mask = cs.cartesian_mask((10, Nx, Ny//Ny_red), acc, sample_n=8)

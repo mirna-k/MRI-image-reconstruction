@@ -1,25 +1,24 @@
 import os
+import h5py
+import numpy as np
 
-def read_files_in_folder(folder_path):
-    # Check if the provided path is a directory
+def get_file_paths(folder_path):
+
     if not os.path.isdir(folder_path):
         print(f"Error: {folder_path} is not a valid directory.")
         return None
 
-    file_path = []
+    file_paths = []
 
     for filename in os.listdir(folder_path):
-        resulting_path = folder_path + '/' + filename
-        file_path.append(resulting_path)
-    return file_path
+        file_paths.append(os.path.join(folder_path, filename))
+    return file_paths
 
-# Example usage
-# folder_path = 'brain_data'
-# resulting_string = read_files_in_folder(folder_path)
-# print(resulting_string)
 
-# for string in resulting_string:
-#     if string:
-#         print(string)
-#     else:
-#         print("Failed to read files.")
+def read_brain_files(file_paths):
+    tensors = []
+    for file_path in file_paths:
+        data = h5py.File(file_path)['reconstruction_rss'][:14, :, :]
+        print(data.shape)
+        tensors.append(data)
+    return np.stack(tensors, axis=0)
