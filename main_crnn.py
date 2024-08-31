@@ -20,7 +20,7 @@ from cascadenet_pytorch.model_pytorch import *
 from cascadenet_pytorch.dnn_io import to_tensor_format
 from cascadenet_pytorch.dnn_io import from_tensor_format
 
-from my_helper import get_file_paths, read_brain_files
+from my_helper import get_file_paths, read_brain_files, mat_read_brain_files
 import h5py
 
 
@@ -83,9 +83,9 @@ def get_brain_data(folder_path: str):
     val_file_paths = get_file_paths(folder_path + '/validation')
     test_file_paths = get_file_paths(folder_path + '/test')
 
-    train = read_brain_files(train_file_paths)
-    validate = read_brain_files(val_file_paths)
-    test = read_brain_files(test_file_paths)
+    train = mat_read_brain_files(train_file_paths)
+    validate = mat_read_brain_files(val_file_paths)
+    test = mat_read_brain_files(test_file_paths)
 
     return train, validate, test
 
@@ -128,7 +128,7 @@ if __name__ == '__main__':
 
     # Create dataset
     # train, validate, test = create_dummy_data()
-    train, validate, test = get_brain_data('../MRI_data/MyDrive/MRI_dataset')
+    train, validate, test = get_brain_data('../MRI_data/MyDrive/MRI_dataset_mat')
 
     # Test creating mask and compute the acceleration rate
     dummy_mask = cs.cartesian_mask((10, Nx, Ny//Ny_red), acc, sample_n=8)
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     optimizer = optim.Adam(rec_net.parameters(), lr=float(args.lr[0]), betas=(0.5, 0.999))
 
     # # build CRNN-MRI with pre-trained parameters
-    # rec_net.load_state_dict(torch.load('./models/pretrained/crnn_mri_d5_c5.pth'))
+    rec_net.load_state_dict(torch.load('./models/pretrained/crnn_mri_d5_c5.pth', weights_only=True))
 
     if cuda:
         rec_net = rec_net.cuda()
@@ -162,7 +162,6 @@ if __name__ == '__main__':
             gnd = Variable(im_gnd.type(Tensor))
 
             optimizer.zero_grad()
-            # print(f'1. im_u: {im_u.dtype}')
             rec = rec_net(im_u, k_u, mask, test=False)
             loss = criterion(torch.abs(rec), gnd)
             loss.backward()
