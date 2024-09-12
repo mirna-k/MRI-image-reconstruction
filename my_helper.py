@@ -2,6 +2,8 @@ import os
 import h5py
 import numpy as np
 import scipy.io
+from torch import Tensor
+import matplotlib.pyplot as plt
 
 def get_file_paths(folder_path):
 
@@ -33,3 +35,20 @@ def mat_read_brain_files(file_paths):
         print(data.shape)
         tensors.append(data)
     return np.stack(tensors, axis=0)
+
+
+def to_plottable_format(data: Tensor, slice_index=0):
+    """
+        data: 5D tensor of shape (1, 2, nx, ny, nt)
+    """
+    if data.ndim != 5:
+        raise ValueError(f"Expected a 5D tensor, but got {data.ndim}D tensor with shape {data.shape}")
+    
+    normalized_data = (data - np.min()) / (np.max() - np.min())
+
+    return normalized_data[0, 0, :, :, slice_index].detach().cpu().numpy()
+
+
+def plot_results(und_slice, rec_slice, gnd_slice, epoch_num, stage="train"):	
+    im = abs(np.concatenate([und_slice, rec_slice, gnd_slice, gnd_slice - rec_slice], 1))
+    plt.imsave(f'{stage}-output{epoch_num+1}.png', im, cmap='gray')

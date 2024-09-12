@@ -5,7 +5,6 @@ import os
 import time
 import torch
 import torch.optim as optim
-from torch.autograd import Variable
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,8 +19,7 @@ from cascadenet_pytorch.model_pytorch import *
 from cascadenet_pytorch.dnn_io import to_tensor_format
 from cascadenet_pytorch.dnn_io import from_tensor_format
 
-from my_helper import get_file_paths, read_brain_files, mat_read_brain_files
-import h5py
+from my_helper import get_file_paths, to_plottable_format, plot_results
 
 
 def prep_input(im, acc=4.0):
@@ -54,7 +52,7 @@ def iterate_minibatch(data, batch_size, shuffle=True):
         yield data[i:i+batch_size]
 
 
-def create_dummy_data():
+def create_dummy_data(filepath):
     """Create small cardiac data based on patches for demo.
 
     Note that in practice, at test time the method will need to be applied to
@@ -62,30 +60,15 @@ def create_dummy_data():
     overfitting.
 
     """
-    # data = loadmat(join(project_root, './data/cardiac.mat'))['seq']
-    # '../MRI_data/MyDrive/MRI_dataset/train/file_brain_AXFLAIR_200_6002425.h5'
-    data =  h5py.File('brain_data/train/file_brain_AXFLAIR_200_6002425.h5')['reconstruction_rss'][:14, :, :]
-    nx, ny, nt = data.shape
+    data =  loadmat(filepath)['reconstruction_rss'][:, :, :]
+    nt, nx, ny = data.shape
     ny_red = 8
     sl = ny//ny_red
-    # data_t = np.transpose(data, (2, 0, 1))
 
     # Synthesize data by extracting patches
-    train = np.array([data[..., i:i+sl] for i in np.random.randint(0, sl*3, 20)])
-    validate = np.array([data[..., i:i+sl] for i in (sl*4, sl*5)])
+    train = np.array([data[..., i:i+sl] for i in np.random.randint(sl*3, sl*5, 20)])
+    validate = np.array([data[..., i:i+sl] for i in (0, sl*2)])
     test = np.array([data[..., i:i+sl] for i in (sl*6, sl*7)])
-
-    return train, validate, test
-
-
-def get_brain_data(folder_path: str):
-    train_file_paths = get_file_paths(folder_path + '/train')
-    val_file_paths = get_file_paths(folder_path + '/validation')
-    test_file_paths = get_file_paths(folder_path + '/test')
-
-    train = mat_read_brain_files(train_file_paths)
-    validate = mat_read_brain_files(val_file_paths)
-    test = mat_read_brain_files(test_file_paths)
 
     return train, validate, test
 
@@ -128,7 +111,6 @@ if __name__ == '__main__':
 
     # Create dataset
     # train, validate, test = create_dummy_data()
-    train, validate, test = get_brain_data('../MRI_data/MyDrive/MRI_dataset_mat')
 
     # Test creating mask and compute the acceleration rate
     dummy_mask = cs.cartesian_mask((10, Nx, Ny//Ny_red), acc, sample_n=8)
@@ -147,8 +129,13 @@ if __name__ == '__main__':
         rec_net = rec_net.cuda()
         criterion.cuda()
 
+    data_paths = iter(get_file_paths('../MRI_data/MyDrive/MRI_dataset_mat/train'))
+    data_file_path = next(data_paths)
     i = 0
     for epoch in range(num_epoch):
+        train, validate, test = create_dummy_data(data_file_path)
+        data_file_path = next(data_paths)
+
         t_start = time.time()
         # Training
         train_err = 0
@@ -156,15 +143,27 @@ if __name__ == '__main__':
         for im in iterate_minibatch(train, batch_size, shuffle=True): #im -> complex
             im_und, k_und, mask, im_gnd = prep_input(im, acc)
             # im_und = torch.Size([1, 2, 256, 32, 30])
-            im_u = Variable(im_und.type(Tensor))
-            k_u = Variable(k_und.type(Tensor))
-            mask = Variable(mask.type(Tensor))
-            gnd = Variable(im_gnd.type(Tensor))
+            im_u = im_und.type(Tensor)
+            k_u = k_und.type(Tensor)
+            mask = mask.type(Tensor)
+            gnd = im_gnd.type(Tensor)
 
             optimizer.zero_grad()
             rec = rec_net(im_u, k_u, mask, test=False)
-            loss = criterion(torch.abs(rec), gnd)
+
+            rec_magnitude = torch.abs(rec)
+
+            if((epoch + 1) % 10 == 0):
+                slice_idx = 0
+                rec_slice = to_plottable_format(rec_magnitude, slice_idx)
+                gnd_slice = to_plottable_format(gnd, slice_idx)   
+                und_slice = to_plottable_format(im_u, slice_idx)
+
+                plot_results(und_slice, rec_slice, gnd_slice, epoch, stage="train")
+
+            loss = criterion(rec_magnitude, gnd)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(rec_net.parameters(), max_norm=1.0)
             optimizer.step()
 
             train_err += loss.item()
@@ -179,13 +178,24 @@ if __name__ == '__main__':
         for im in iterate_minibatch(validate, batch_size, shuffle=False):
             im_und, k_und, mask, im_gnd = prep_input(im, acc)
             with torch.no_grad():
-                im_u = Variable(im_und.type(Tensor))
-                k_u = Variable(k_und.type(Tensor))
-                mask = Variable(mask.type(Tensor))
-                gnd = Variable(im_gnd.type(Tensor))
+                im_u = im_und.type(Tensor)
+                k_u = k_und.type(Tensor)
+                mask = mask.type(Tensor)
+                gnd = im_gnd.type(Tensor)
 
             pred = rec_net(im_u, k_u, mask, test=True)
-            err = criterion(torch.abs(pred), gnd)
+
+            pred_magnitude = torch.abs(pred)
+
+            if((epoch + 1) % 10 == 0):
+                slice_idx = 0
+                rec_slice = to_plottable_format(pred_magnitude, slice_idx)
+                gnd_slice = to_plottable_format(gnd, slice_idx)   
+                und_slice = to_plottable_format(im_u, slice_idx)
+
+                plot_results(und_slice, rec_slice, gnd_slice, epoch, stage="val")
+
+            err = criterion(pred_magnitude, gnd)
 
             validate_err += err
             validate_batches += 1
@@ -201,13 +211,23 @@ if __name__ == '__main__':
         for im in iterate_minibatch(test, batch_size, shuffle=False):
             im_und, k_und, mask, im_gnd = prep_input(im, acc)
             with torch.no_grad():
-                im_u = Variable(im_und.type(Tensor))
-                k_u = Variable(k_und.type(Tensor))
-                mask = Variable(mask.type(Tensor))
-                gnd = Variable(im_gnd.type(Tensor))
+                im_u = im_und.type(Tensor)
+                k_u = k_und.type(Tensor)
+                mask = mask.type(Tensor)
+                gnd = im_gnd.type(Tensor)
 
             pred = rec_net(im_u, k_u, mask, test=True)
-            err = criterion(torch.abs(pred), gnd)
+
+            pred_magnitude = torch.abs(pred)
+            if((epoch + 1) % 10 == 0):
+                slice_idx = 0
+                rec_slice = to_plottable_format(pred_magnitude, slice_idx)
+                gnd_slice = to_plottable_format(gnd, slice_idx)   
+                und_slice = to_plottable_format(im_u, slice_idx)
+
+                plot_results(und_slice, rec_slice, gnd_slice, epoch, stage="test")
+
+            err = criterion(pred_magnitude, gnd)
             test_err += err
             for im_i, und_i, pred_i in zip(im,
                                            from_tensor_format(im_und.numpy()),

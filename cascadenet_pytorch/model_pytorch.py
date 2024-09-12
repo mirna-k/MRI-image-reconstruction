@@ -152,8 +152,6 @@ class DnCn3DDS(nn.Module):
         self.nd = nd
         self.mode = mode
         print('Creating D{}C{}-DS (3D)'.format(nd, nc))
-        if self.mode == 'theano':
-            print('Initialised with theano mode (backward-compatibility)')
         conv_blocks = []
         dcs = []
         kavgs = []
@@ -181,15 +179,6 @@ class DnCn3DDS(nn.Module):
     def forward(self, x, k, m):
         for i in range(self.nc):
             x_ds = self.kavgs[i](x, m)
-            if self.mode == 'theano':
-                # transpose the layes
-                x_ds_tmp = torch.zeros_like(x_ds)
-                nneigh = len(self.fr_d)
-                for j in range(nneigh):
-                    x_ds_tmp[:,2*j] = x_ds[:,j]
-                    x_ds_tmp[:,2*j+1] = x_ds[:,j+nneigh]
-                x_ds = x_ds_tmp
-
             x_cnn = self.conv_blocks[i](x_ds)
             x = x + x_cnn
             x = self.dcs[i](x, k, m)
@@ -344,7 +333,7 @@ class CRNN_MRI(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
         dcs = []
-        for i in range(nc):
+        for _ in range(nc):
             dcs.append(cl.DataConsistencyInKspace(norm='ortho'))
         self.dcs = dcs
 
