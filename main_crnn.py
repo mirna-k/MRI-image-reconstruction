@@ -20,6 +20,7 @@ from cascadenet_pytorch.dnn_io import to_tensor_format
 from cascadenet_pytorch.dnn_io import from_tensor_format
 
 from my_helper import get_file_paths, to_plottable_format, plot_results
+from augmentation import *
 
 
 def prep_input(im, acc=4.0):
@@ -66,7 +67,7 @@ def create_dummy_data(filepath):
     sl = ny//ny_red
 
     # Synthesize data by extracting patches
-    train = np.array([data[..., i:i+sl] for i in np.random.randint(sl*3, sl*5, 20)])
+    train = np.array([augment_data(data[..., i:i+sl]) for i in np.random.randint(sl*3, sl*5, 100)])
     validate = np.array([data[..., i:i+sl] for i in (0, sl*2)])
     test = np.array([data[..., i:i+sl] for i in (sl*6, sl*7)])
 
@@ -123,13 +124,13 @@ if __name__ == '__main__':
     optimizer = optim.Adam(rec_net.parameters(), lr=float(args.lr[0]), betas=(0.5, 0.999))
 
     # # build CRNN-MRI with pre-trained parameters
-    rec_net.load_state_dict(torch.load('./models/pretrained/crnn_mri_d5_c5.pth', weights_only=True))
+    #rec_net.load_state_dict(torch.load('./models/pretrained/crnn_mri_d5_c5.pth'))
 
     if cuda:
         rec_net = rec_net.cuda()
         criterion.cuda()
-
-    data_paths = iter(get_file_paths('../MRI_data/MyDrive/MRI_dataset_mat/train'))
+# ../MRI_data/MyDrive/MRI_dataset_mat/train
+    data_paths = iter(get_file_paths('more_mat_brain_files'))
     data_file_path = next(data_paths)
     i = 0
     for epoch in range(num_epoch):

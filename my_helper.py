@@ -44,7 +44,7 @@ def to_plottable_format(data: Tensor, slice_index=0):
     if data.ndim != 5:
         raise ValueError(f"Expected a 5D tensor, but got {data.ndim}D tensor with shape {data.shape}")
     
-    normalized_data = (data - np.min()) / (np.max() - np.min())
+    normalized_data = (data - data.min()) / (data.max() - data.min())
 
     return normalized_data[0, 0, :, :, slice_index].detach().cpu().numpy()
 
